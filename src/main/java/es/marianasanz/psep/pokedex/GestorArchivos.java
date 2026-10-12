@@ -11,13 +11,12 @@ public class GestorArchivos {
 
     // Actividad principal
     public Path guardarFicha(Pokemon pokemon) throws IOException {
-        // TODO
-        return null;
+        return escribir(carpeta.resolve("pokemon").resolve(pokemon.getNombre() + ".json"),
+                pokemon.getJsonOriginal());
     }
     // Ampliación 2: imágenes.
     public Path rutaImagen(Pokemon pokemon) {
-        //TODO
-        return null;
+        return carpeta.resolve("imagenes").resolve(pokemon.getNombre() + ".png");
     }
     // Ampliación 3: comparación. Ya hecho
     public Path guardarComparacion(ResultadoComparacion resultado) throws IOException {

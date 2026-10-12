@@ -27,14 +27,15 @@ public class ClientePokeApi {
     }
     // Actividad principal: un solo cliente reutilizado para todas las peticiones.
     public static HttpClient crearClienteHttp() {
-        // TODO
-        HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).version(HttpClient.Version.HTTP_1_1).followRedirects(HttpClient.Redirect.NORMAL).build();
-        return null;
+        return HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
     }
     public static String normalizarEntrada(String entrada) throws ExcepcionPokedex {
-        //TODO: Comprueba que la entrada no esté vacía o sea nula.
-        if (entrada != null || entrada.isEmpty()) throw new ExcepcionPokedex("Entrada vacia o null");
-        String clave = entrada.trim(); //TODO: Elimina los espacios al principio y al final de la entrada y convierte el nombre a minúsculas.
+        if (entrada == null || entrada.isBlank()) throw new ExcepcionPokedex("Introduce un nombre o identificador de Pokémon.");
+        String clave = entrada.trim().toLowerCase(Locale.ROOT);
         if (clave.matches("[0-9]+")) {
             BigInteger numero = new BigInteger(clave);
             if (numero.signum() <= 0) throw new ExcepcionPokedex("El identificador debe ser un entero positivo.");
@@ -47,38 +48,35 @@ public class ClientePokeApi {
         return clave;
     }
     public Pokemon consultarPokemon(String entrada) throws ExcepcionPokedex, InterruptedException {
-        // TODO
-        try { // Descomentar este TRY-CATCH
-            HttpResponse<String> respuesta = null; //TODO
+        String clave = normalizarEntrada(entrada);
+        Pokemon almacenado = cache.get(clave);
+        if (almacenado != null) {
+            System.out.println("Caché: " + almacenado.getNombre());
+            return almacenado;
+        }
 
-            normalizarEntrada(entrada);
-            URI uriFinal = URI.create(base + entrada);
-
-            System.out.println(uriFinal.toString());
-
-            HttpRequest httpRequest = HttpRequest
+        URI uriFinal = base.resolve(clave + "/");
+        System.out.println("URL solicitada: " + uriFinal);
+        HttpRequest peticion = HttpRequest
                     .newBuilder()
                     .timeout(Duration.ofSeconds(15))
                     .GET()
                     .uri(uriFinal) //Indica la dirección de destino, convirtiendo el texto en un objeto URI.
-                    //.headers("Content-Type", "text/html; charset=UTF-8") //Añade pares de nombre y valor
                     .header("Accept", "application/json")
-                    .setHeader("User-Agent", "Mozilla/5.0") //Sustituye los valores anteriores. Si no existe, la crea.
                     .build();
-
-            HttpResponse<String> httpResponse = cliente.send(httpRequest, HttpResponse.BodyHandlers.ofString());
-            mostrarMetadatos(httpResponse);
-
-            if (respuesta.statusCode() == 404) throw new ExcepcionPokedex("HTTP 404: no existe el Pokémon solicitado.");
-            if (respuesta.statusCode() != 200) throw new ExcepcionPokedex("Error HTTP " + respuesta.statusCode() + ": no se procesa la ficha.");
-            //TODO
-            if (respuesta.statusCode() == 200){
-                System.out.println("Pokemon encontrado");
-                String jsonPokemon = httpResponse.body();
+        try {
+            HttpResponse<String> respuesta = cliente.send(peticion, HttpResponse.BodyHandlers.ofString());
+            mostrarMetadatos(respuesta);
+            if (respuesta.statusCode() == 404) {
+                throw new ExcepcionPokedex("HTTP 404: no se ha encontrado ese Pokémon.");
             }
-
-            return Pokemon.desdeJson(httpResponse.toString());
-
+            if (respuesta.statusCode() != 200) {
+                throw new ExcepcionPokedex("Error HTTP " + respuesta.statusCode() + ": no se procesa la ficha.");
+            }
+            Pokemon pokemon = Pokemon.desdeJson(respuesta.body());
+            cache.put(pokemon.getNombre(), pokemon);
+            cache.put(Integer.toString(pokemon.getId()), pokemon);
+            return pokemon;
         } catch (HttpTimeoutException error) {
             throw new ExcepcionPokedex("Tiempo de espera agotado al consultar el Pokémon.", error);
         } catch (IOException error) {
@@ -89,16 +87,10 @@ public class ClientePokeApi {
         }
     }
     private void mostrarMetadatos(HttpResponse<?> respuesta) {
-        // TODO
-        int statusCode = respuesta.statusCode();
-
-        HttpClient.Version version = respuesta.version();
-        String ContentType = respuesta.headers().firstValue("Content-type").orElse("No presente");
-
-        System.out.println("Codigo de estado: " + statusCode);
-        System.out.println("Version de HTTP: " + version);
-        System.out.println("Content-type: " + ContentType);
-
+        System.out.println("Código de estado: " + respuesta.statusCode());
+        System.out.println("Versión HTTP: " + respuesta.version());
+        respuesta.headers().firstValue("Content-Type")
+                .ifPresent(tipo -> System.out.println("Content-Type: " + tipo));
     }
     // Ampliación 2: imágenes.
     public String obtenerUrlImagen(Pokemon pokemon) throws ExcepcionPokedex {
@@ -107,9 +99,10 @@ public class ClientePokeApi {
         return url;
     }
     public Path descargarImagen(Pokemon pokemon, Path destino) throws ExcepcionPokedex, InterruptedException {
-        URI url = null;
+        String urlImagen = obtenerUrlImagen(pokemon);
+        URI url;
         try {
-            //TODO 1
+            url = URI.create(urlImagen);
             if (!("https".equalsIgnoreCase(url.getScheme()) || "http".equalsIgnoreCase(url.getScheme())) || url.getHost() == null)
                 throw new IllegalArgumentException("La imagen necesita una URL HTTP válida");
         } catch (IllegalArgumentException error) {
@@ -120,10 +113,15 @@ public class ClientePokeApi {
             Path carpeta = destino.toAbsolutePath().getParent();
             Files.createDirectories(carpeta);
             temporal = Files.createTempFile(carpeta, "imagen-", ".tmp");
-            HttpRequest peticion = null;//TODO 2
+            System.out.println("URL solicitada: " + url);
+            HttpRequest peticion = HttpRequest.newBuilder()
+                    .uri(url)
+                    .timeout(Duration.ofSeconds(15))
+                    .GET()
+                    .build();
             // ofFile escribe el cuerpo en disco, incluso si el servidor responde con un error.
-            HttpResponse<Path> respuesta = null;//TODO 3
-            //TODO 4
+            HttpResponse<Path> respuesta = cliente.send(peticion, HttpResponse.BodyHandlers.ofFile(temporal));
+            mostrarMetadatos(respuesta);
             if (respuesta.statusCode() != 200) throw new ExcepcionPokedex("Error HTTP " + respuesta.statusCode() + " al descargar la imagen.");
             String tipo = respuesta.headers().firstValue("Content-Type").orElse("")
                     .split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
@@ -138,10 +136,10 @@ public class ClientePokeApi {
             throw new ExcepcionPokedex("Tiempo de espera agotado al descargar la imagen.", error);
         } catch (IOException error) {
             throw new ExcepcionPokedex("Error de conexión o de archivo al descargar la imagen: " + error.getMessage(), error);
-        } /*catch (InterruptedException error) {
+        } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
             throw error;
-        }*/ finally {
+        } finally {
             if (temporal != null) {
                 try { Files.deleteIfExists(temporal); }
                 catch (IOException error) { System.out.println("No se pudo borrar el temporal " + temporal + ": " + error.getMessage()); }

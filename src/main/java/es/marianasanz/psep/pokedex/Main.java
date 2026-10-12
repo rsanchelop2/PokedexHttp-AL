@@ -51,21 +51,31 @@ public class Main {
 
     private Pokemon solicitarPokemon(String mensaje) throws ExcepcionPokedex, InterruptedException {
         System.out.print(mensaje);
-        if (!entrada.hasNextLine()) return null;
+        if (!entrada.hasNextLine()) return cliente.consultarPokemon(null);
         String texto = entrada.nextLine();
-        if (texto == null) return null;
         return cliente.consultarPokemon(texto);
     }
     private void guardarFicha(Pokemon pokemon) {
-        // TODO
+        try {
+            Path ruta = archivos.guardarFicha(pokemon);
+            System.out.println("Ficha guardada en: " + ruta.toAbsolutePath());
+        } catch (IOException error) {
+            System.out.println("No se pudo guardar la ficha: " + error.getMessage());
+        }
     }
     private void consultar() throws ExcepcionPokedex, InterruptedException {
-        //TODO
+        Pokemon pokemon = solicitarPokemon("Introduce el nombre o identificador del Pokémon: ");
+        servicio.mostrarFicha(pokemon);
+        guardarFicha(pokemon);
+        descargarImagen(pokemon);
     }
     // Ampliación 2: imágenes.
     private void descargar() throws ExcepcionPokedex, InterruptedException {
-        // TODO
-        Path destino = null; // TODO
+        Pokemon pokemon = solicitarPokemon("Introduce el nombre o identificador del Pokémon: ");
+        descargarImagen(pokemon);
+    }
+    private void descargarImagen(Pokemon pokemon) throws ExcepcionPokedex, InterruptedException {
+        Path destino = archivos.rutaImagen(pokemon);
         if (Files.exists(destino)) {
             while (true) {
                 System.out.print("La imagen ya existe. ¿Conservar (c) o descargar de nuevo (d)? ");
@@ -80,13 +90,15 @@ public class Main {
                 System.out.println("Introduce c o d.");
             }
         }
-        // TODO: Si no está la imagen, entonces hay que descargarla.
+        Path guardada = cliente.descargarImagen(pokemon, destino);
+        System.out.println("Imagen guardada en: " + guardada.toAbsolutePath());
     }
     // Ampliación 3: comparación.
     private void comparar() throws ExcepcionPokedex, InterruptedException {
-        //TODO
-        ResultadoComparacion resultado = null;
-        //TODO
+        Pokemon primero = solicitarPokemon("Primer Pokémon (nombre o identificador): ");
+        Pokemon segundo = solicitarPokemon("Segundo Pokémon (nombre o identificador): ");
+        ResultadoComparacion resultado = servicio.compararPokemon(primero, segundo);
+        System.out.print(resultado.informe());
         try { System.out.println("Informe guardado en: " + archivos.guardarComparacion(resultado).toAbsolutePath()); }
         catch (IOException error) { System.out.println("No se pudo guardar el informe: " + error.getMessage()); }
     }
